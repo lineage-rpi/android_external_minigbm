@@ -47,6 +47,11 @@ MINIGBM_CPPFLAGS += -DDRV_MESON
 MINIGBM_CFLAGS += -DDRV_MESON
 endif
 
+ifneq ($(filter vc4, $(BOARD_GPU_DRIVERS)),)
+MINIGBM_CPPFLAGS += -DDRV_VC4
+MINIGBM_CFLAGS += -DDRV_VC4
+endif
+
 include $(CLEAR_VARS)
 
 SUBDIRS := cros_gralloc
@@ -77,7 +82,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 
 include $(CLEAR_VARS)
-LOCAL_SHARED_LIBRARIES := libcutils
+LOCAL_SHARED_LIBRARIES := liblog
 LOCAL_STATIC_LIBRARIES := libdrm
 
 LOCAL_SRC_FILES += $(MINIGBM_SRC) gbm.c gbm_helpers.c

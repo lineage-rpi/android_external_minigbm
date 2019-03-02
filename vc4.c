@@ -17,8 +17,8 @@
 #include "helpers.h"
 #include "util.h"
 
-static const uint32_t render_target_formats[] = { DRM_FORMAT_ARGB8888, DRM_FORMAT_RGB565,
-						  DRM_FORMAT_XRGB8888 };
+static const uint32_t render_target_formats[] = { DRM_FORMAT_ABGR8888, DRM_FORMAT_BGR565,
+						  DRM_FORMAT_XBGR8888, DRM_FORMAT_RGB565 };
 
 static int vc4_init(struct driver *drv)
 {
@@ -41,7 +41,7 @@ static int vc4_bo_create(struct bo *bo, uint32_t width, uint32_t height, uint32_
 	 * performance optimization.
 	 */
 	stride = drv_stride_from_format(format, width, 0);
-	stride = ALIGN(stride, 64);
+	stride = ALIGN(stride, 16);
 	drv_bo_from_format(bo, stride, height, format);
 
 	memset(&bo_create, 0, sizeof(bo_create));
