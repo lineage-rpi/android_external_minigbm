@@ -33,8 +33,8 @@ extern "C" {
 #define BO_USE_SW_READ_RARELY	        (1ull << 10)
 #define BO_USE_SW_WRITE_OFTEN	        (1ull << 11)
 #define BO_USE_SW_WRITE_RARELY		(1ull << 12)
-#define BO_USE_HW_VIDEO_ENCODER         (1ull << 13)
-#define BO_USE_HW_VIDEO_DECODER         (1ull << 14)
+#define BO_USE_HW_VIDEO_DECODER         (1ull << 13)
+#define BO_USE_HW_VIDEO_ENCODER         (1ull << 14)
 #define BO_USE_RENDERSCRIPT		(1ull << 15)
 
 /* Quirks for allocating a buffer. */
@@ -148,8 +148,6 @@ int drv_bo_flush_or_unmap(struct bo *bo, struct mapping *mapping);
 uint32_t drv_bo_get_width(struct bo *bo);
 
 uint32_t drv_bo_get_height(struct bo *bo);
-
-uint32_t drv_bo_get_stride_or_tiling(struct bo *bo);
 
 size_t drv_bo_get_num_planes(struct bo *bo);
 
