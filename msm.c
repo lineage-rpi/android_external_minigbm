@@ -105,8 +105,11 @@ static void msm_calculate_layout(struct bo *bo)
 		uint32_t stride, alignw, alignh;
 
 		alignw = ALIGN(width, DEFAULT_ALIGNMENT);
-		/* HAL_PIXEL_FORMAT_YV12 requires that the buffer's height not be aligned. */
-		if (bo->meta.format == DRM_FORMAT_YVU420_ANDROID) {
+		/* HAL_PIXEL_FORMAT_YV12 requires that the buffer's height not be aligned.
+			DRM_FORMAT_R8 of height one is used for JPEG camera output, so don't
+			height align that. */
+		if (bo->meta.format == DRM_FORMAT_YVU420_ANDROID ||
+						(bo->meta.format == DRM_FORMAT_R8 && height == 1)) {
 			alignh = height;
 		} else {
 			alignh = ALIGN(height, DEFAULT_ALIGNMENT);
@@ -157,7 +160,7 @@ static void msm_add_ubwc_combinations(struct driver *drv, const uint32_t *format
 static int msm_init(struct driver *drv)
 {
 	struct format_metadata metadata;
-	uint64_t render_use_flags = BO_USE_RENDER_MASK;
+	uint64_t render_use_flags = BO_USE_RENDER_MASK | BO_USE_SCANOUT;
 	uint64_t texture_use_flags = BO_USE_TEXTURE_MASK | BO_USE_HW_VIDEO_DECODER;
 	uint64_t sw_flags = (BO_USE_RENDERSCRIPT | BO_USE_SW_WRITE_OFTEN | BO_USE_SW_READ_OFTEN |
 			     BO_USE_LINEAR | BO_USE_PROTECTED);
@@ -175,6 +178,16 @@ static int msm_init(struct driver *drv)
 	drv_modify_combination(drv, DRM_FORMAT_YVU420, &LINEAR_METADATA, BO_USE_HW_VIDEO_ENCODER);
 	drv_modify_combination(drv, DRM_FORMAT_NV12, &LINEAR_METADATA, BO_USE_HW_VIDEO_ENCODER);
 
+	/* The camera stack standardizes on NV12 for YUV buffers. */
+	drv_modify_combination(drv, DRM_FORMAT_NV12, &LINEAR_METADATA,
+			       BO_USE_CAMERA_READ | BO_USE_CAMERA_WRITE | BO_USE_SCANOUT);
+	/*
+	 * R8 format is used for Android's HAL_PIXEL_FORMAT_BLOB and is used for JPEG snapshots
+	 * from camera.
+	 */
+	drv_modify_combination(drv, DRM_FORMAT_R8, &LINEAR_METADATA,
+			       BO_USE_CAMERA_READ | BO_USE_CAMERA_WRITE);
+
 	/* Android CTS tests require this. */
 	drv_add_combination(drv, DRM_FORMAT_BGR888, &LINEAR_METADATA, BO_USE_SW_MASK);
 
@@ -188,7 +201,7 @@ static int msm_init(struct driver *drv)
 	texture_use_flags &= ~sw_flags;
 
 	msm_add_ubwc_combinations(drv, render_target_formats, ARRAY_SIZE(render_target_formats),
-				  &metadata, render_use_flags | BO_USE_SCANOUT);
+				  &metadata, render_use_flags);
 
 	msm_add_ubwc_combinations(drv, texture_source_formats, ARRAY_SIZE(texture_source_formats),
 				  &metadata, texture_use_flags);
@@ -276,6 +289,16 @@ static void *msm_bo_map(struct bo *bo, struct vma *vma, size_t plane, uint32_t m
 		    req.offset);
 }
 
+static uint32_t msm_resolve_format(struct driver *drv, uint32_t format, uint64_t use_flags)
+{
+	switch (format) {
+	case DRM_FORMAT_FLEX_YCbCr_420_888:
+		return DRM_FORMAT_NV12;
+	default:
+		return format;
+	}
+}
+
 const struct backend backend_msm = {
 	.name = "msm",
 	.init = msm_init,
@@ -285,5 +308,6 @@ const struct backend backend_msm = {
 	.bo_import = drv_prime_bo_import,
 	.bo_map = msm_bo_map,
 	.bo_unmap = drv_bo_munmap,
+	.resolve_format = msm_resolve_format,
 };
 #endif /* DRV_MSM */
