@@ -6,9 +6,11 @@ cc_defaults {
 
     srcs: [
         "amdgpu.c",
+        "dri.c",
         "drv.c",
         "dumb_driver.c",
         "exynos.c",
+        "generic_dri_driver.c",
         "helpers_array.c",
         "helpers.c",
         "i915.c",
@@ -20,7 +22,10 @@ cc_defaults {
         "virtio_gpu.c",
     ],
 
+    include_dirs: ["external/mesa3d/include"],
+
     cflags: [
+        "-DDRV_DRI_GENERIC",
         "-D_GNU_SOURCE=1",
         "-D_FILE_OFFSET_BITS=64",
         "-Wall",
@@ -32,6 +37,15 @@ cc_defaults {
     ],
 
     cppflags: ["-std=c++14"],
+
+    multilib: {
+        lib32: {
+            cflags: ["-DDRI_DRIVER_DIR=/vendor/lib/dri"],
+        },
+        lib64: {
+            cflags: ["-DDRI_DRIVER_DIR=/vendor/lib64/dri"],
+        },
+    },
 }
 
 cc_defaults {
@@ -87,28 +101,6 @@ cc_defaults {
     export_include_dirs: ["."],
 }
 
-cc_library {
-    name: "libgbm",
-    defaults: ["gbm_defaults"],
-    host_supported: true,
-
-    target: {
-        host: {
-            // Avoid linking to another host copy of libdrm; this library will cause
-            // binary GPU drivers to be loaded from the host, which might be linked
-            // to a system copy of libdrm, which conflicts with the AOSP one
-            allow_undefined_symbols: true,
-            header_libs: ["libdrm_headers"],
-        },
-        android: {
-            shared_libs: [
-                "libdrm",
-                "liblog"
-            ],
-        },
-    },
-}
-
 cc_library_static {
     name: "libminigbm_cros_gralloc",
     defaults: ["minigbm_cros_gralloc_defaults"],
@@ -122,6 +114,7 @@ cc_library_shared {
     name: "gralloc.minigbm",
     defaults: ["minigbm_cros_gralloc_defaults"],
     srcs: ["cros_gralloc/gralloc0/gralloc0.cc"],
+    relative_install_path: "hw",
 }
 
 cc_library_shared {
@@ -136,6 +129,7 @@ cc_library_shared {
             enabled: true,
         },
     },
+    relative_install_path: "hw",
     cflags: ["-DDRV_I915"],
     srcs: ["cros_gralloc/gralloc0/gralloc0.cc"],
 }
@@ -143,6 +137,7 @@ cc_library_shared {
 cc_library_shared {
     name: "gralloc.minigbm_meson",
     defaults: ["minigbm_cros_gralloc_defaults"],
+    relative_install_path: "hw",
     cflags: ["-DDRV_MESON"],
     srcs: ["cros_gralloc/gralloc0/gralloc0.cc"],
 }

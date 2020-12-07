@@ -11,6 +11,7 @@
 #include <sys/mman.h>
 #include <syscall.h>
 #include <xf86drm.h>
+#include <xf86drmMode.h>
 
 #include "../drv_priv.h"
 #include "../helpers.h"
@@ -62,14 +63,39 @@ cros_gralloc_driver::~cros_gralloc_driver()
 	}
 }
 
-static struct driver *init_try_node(int idx, char const *str)
+static bool is_kms_dev(const char *path)
+{
+	int fd = open(path, O_RDWR | O_CLOEXEC);
+	if (fd < 0)
+		return false;
+
+	auto res = drmModeGetResources(fd);
+	if (!res) {
+		close(fd);
+		return false;
+	}
+
+	bool is_kms = res->count_crtcs > 0 && res->count_connectors > 0 && res->count_encoders > 0;
+
+	drmModeFreeResources(res);
+	close(fd);
+
+	return is_kms;
+}
+
+static struct driver *init_try_node(int idx, bool use_card_node, bool try_generic)
 {
 	int fd;
 	char *node;
 	struct driver *drv;
 
-	if (asprintf(&node, str, DRM_DIR_NAME, idx) < 0)
+	if (asprintf(&node, use_card_node ? "%s/card%d" : "%s/renderD%d", DRM_DIR_NAME, idx) < 0)
 		return NULL;
+
+	if (use_card_node && !is_kms_dev(node)) {
+		free(node);
+		return NULL;
+	}
 
 	fd = open(node, O_RDWR, 0);
 	free(node);
@@ -77,7 +103,7 @@ static struct driver *init_try_node(int idx, char const *str)
 	if (fd < 0)
 		return NULL;
 
-	drv = drv_create(fd);
+	drv = drv_create(fd, try_generic);
 	if (!drv)
 		close(fd);
 
@@ -93,8 +119,6 @@ int32_t cros_gralloc_driver::init()
 	 * TODO(gsingh): Enable render nodes on udl/evdi.
 	 */
 
-	char const *render_nodes_fmt = "%s/renderD%d";
-	char const *card_nodes_fmt = "%s/card%d";
 	uint32_t num_nodes = DRM_NUM_NODES;
 	uint32_t min_render_node = DRM_RENDER_NODE_START;
 	uint32_t max_render_node = (min_render_node + num_nodes);
@@ -103,17 +127,33 @@ int32_t cros_gralloc_driver::init()
 
 	// Try render nodes...
 	for (uint32_t i = min_render_node; i < max_render_node; i++) {
-		drv_ = init_try_node(i, render_nodes_fmt);
+		drv_ = init_try_node(i, false, false);
 		if (drv_)
 			return 0;
 	}
 
 	// Try card nodes... for vkms mostly.
 	for (uint32_t i = min_card_node; i < max_card_node; i++) {
-		drv_ = init_try_node(i, card_nodes_fmt);
+		drv_ = init_try_node(i, true, false);
 		if (drv_)
 			return 0;
 	}
+
+#ifdef DRV_DRI_GENERIC
+	// Try card nodes using mesa3d/dri backend
+	for (uint32_t i = min_card_node; i < max_card_node; i++) {
+		drv_ = init_try_node(i, true, true);
+		if (drv_)
+			return 0;
+	}
+
+	// Try render nodes using mesa3d/dri backend
+	for (uint32_t i = min_render_node; i < max_render_node; i++) {
+		drv_ = init_try_node(i, false, true);
+		if (drv_)
+			return 0;
+	}
+#endif
 
 	return -ENODEV;
 }
@@ -257,7 +297,7 @@ int32_t cros_gralloc_driver::allocate(const struct cros_gralloc_buffer_descripto
 	name = (char *)(&hnd->base.data[hnd->name_offset]);
 	snprintf(name, descriptor->name.size() + 1, "%s", descriptor->name.c_str());
 
-	id = drv_bo_get_plane_handle(bo, 0).u32;
+	id = hnd->id;
 	auto buffer = new cros_gralloc_buffer(id, bo, hnd, hnd->fds[hnd->num_planes],
 					      hnd->reserved_region_size);
 
@@ -286,10 +326,7 @@ int32_t cros_gralloc_driver::retain(buffer_handle_t handle)
 		return 0;
 	}
 
-	if (drmPrimeFDToHandle(drv_get_fd(drv_), hnd->fds[0], &id)) {
-		drv_log("drmPrimeFDToHandle failed.\n");
-		return -errno;
-	}
+	id = hnd->id;
 
 	if (buffers_.count(id)) {
 		buffer = buffers_[id];
@@ -314,8 +351,6 @@ int32_t cros_gralloc_driver::retain(buffer_handle_t handle)
 		bo = drv_bo_import(drv_, &data);
 		if (!bo)
 			return -EFAULT;
-
-		id = drv_bo_get_plane_handle(bo, 0).u32;
 
 		buffer = new cros_gralloc_buffer(id, bo, nullptr, hnd->fds[hnd->num_planes],
 						 hnd->reserved_region_size);
