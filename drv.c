@@ -25,6 +25,15 @@
 #include "helpers.h"
 #include "util.h"
 
+#ifdef DRV_EXTERNAL
+extern struct backend *init_external_backend();
+
+static const struct backend *drv_get_backend(int fd)
+{
+	return init_external_backend();
+}
+#else
+
 #ifdef DRV_AMDGPU
 extern const struct backend backend_amdgpu;
 #endif
@@ -107,6 +116,7 @@ static const struct backend *drv_get_backend(int fd)
 	drmFreeVersion(drm_version);
 	return NULL;
 }
+#endif
 
 struct driver *drv_create(int fd)
 {
